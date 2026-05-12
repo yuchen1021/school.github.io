@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2048 遊戲 (雲端排行榜版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Clear+Sans:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Clear Sans', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #faf8ef;
+            color: #776e65;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            background-color: #bbada0;
+            border-radius: 6px;
+            touch-action: none;
+        }
+
+        .grid-cell {
+            background-color: rgba(238, 228, 218, 0.35);
+            border-radius: 12px;
+        }
+
+        .tile {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            border-radius: 12px;
+            transition: 100ms ease-in-out;
+            transition-property: transform;
+            
+            width: calc(25% - 0.75rem);
+            height: calc(25% - 0.75rem);
+            left: calc(var(--x) * 25% + var(--x) * 0.25rem);
+            top: calc(var(--y) * 25% + var(--y) * 0.25rem);
+        }
+
+        @media (min-width: 640px) {
+            .tile {
+                width: calc(25% - 0.9375rem);
+                height: calc(25% - 0.9375rem);
+                left: calc(var(--x) * 25% + var(--x) * 0.3125rem);
+                top: calc(var(--y) * 25% + var(--y) * 0.3125rem);
+            }
+        }
+
+        .game-over-overlay {
+            background-color: rgba(238, 228, 218, 0.73);
+            z-index: 100;
+            animation: fade-in 0.8s ease;
+        }
+
+        @keyframes fade-in {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
+        .tile-new {
+            animation: appear 0.2s ease 100ms;
+            animation-fill-mode: backwards;
+        }
+
+        @keyframes appear {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        
+        .tile-merged {
+            animation: pop 0.2s ease 100ms;
+            animation-fill-mode: backwards;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .legendary-tile {
+            animation: breathe-glow 2s infinite alternate ease-in-out;
+            text-shadow: 0 0 5px rgba(255,255,255,0.5);
+        }
+
+        @keyframes breathe-glow {
+            0% { box-shadow: 0 0 15px 5px rgba(243, 215, 116, 0.5); transform: scale(1); }
+            100% { box-shadow: 0 0 35px 15px rgba(255, 230, 150, 0.8); transform: scale(1.02); }
+        }
+
+        .victory-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(237, 194, 46, 0.9);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 150;
+            pointer-events: none;
+            opacity: 0;
+            animation: pop-up-fade 2.5s ease-out forwards;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        @keyframes pop-up-fade {
+            0% { opacity: 0; transform: translate(-50%, -40%) scale(0.8); }
+            15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            30% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -60%) scale(0.9); }
+        }
+
+        #confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 200;
+            overflow: hidden;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 20px;
+            background-color: #f00;
+            top: -20px;
+            opacity: 0;
+        }
+
+        /* 排行榜的自訂滾動條 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(238, 228, 218, 0.5); 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #bbada0; 
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-start min-h-screen py-6 px-4 relative">
+
+    <div id="confetti-container"></div>
+
+    <div class="w-full max-w-[500px] flex justify-between items-center mb-4 z-10">
+        <h1 class="text-6xl font-bold text-[#776e65]">2048</h1>
+        <div class="flex gap-2">
+            <div class="bg-[#bbada0] text-white py-1 px-3 rounded flex flex-col items-center">
+                <span class="text-[12px] font-bold text-[#eee4da] uppercase leading-tight">分數</span>
+                <span id="score" class="text-lg font-bold leading-tight">0</span>
+            </div>
+            <div class="bg-[#bbada0] text-white py-1 px-3 rounded flex flex-col items-center">
+                <span class="text-[12px] font-bold text-[#eee4da] uppercase leading-tight">最高分</span>
+                <span id="best-score" class="text-lg font-bold leading-tight">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="w-full max-w-[500px] flex justify-between items-center mb-6 z-10">
+        <p class="text-md">合併數字，挑戰 <strong class="font-bold">2048!</strong></p>
+        <div class="flex gap-2">
+            <button id="autoplay-btn" class="bg-[#8f7a66] hover:bg-[#9f8b77] text-white font-bold py-2 px-3 rounded text-sm transition-colors shadow">
+                AI 自動
+            </button>
+            <button id="restart-btn" class="bg-[#8f7a66] hover:bg-[#9f8b77] text-white font-bold py-2 px-3 rounded text-sm transition-colors shadow">
+                新遊戲
+            </button>
+        </div>
+    </div>
+
+    <!-- 遊戲主畫布 -->
+    <div class="relative w-full max-w-[500px] aspect-square game-container p-4 sm:p-5 shadow-lg z-10">
+        <div class="w-full h-full grid grid-cols-4 grid-rows-4 gap-4 sm:gap-5 relative" id="grid-container">
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+            <div class="grid-cell w-full h-full"></div><div class="grid-cell w-full h-full"></div>
+        </div>
+        <div id="tile-container" class="absolute inset-4 sm:inset-5 pointer-events-none"></div>
+
+        <div id="game-over" class="absolute inset-0 game-over-overlay flex-col items-center justify-center hidden rounded-md">
+            <p class="text-5xl font-bold text-[#776e65] mb-6">遊戲結束!</p>
+            <button id="try-again-btn" class="bg-[#8f7a66] hover:bg-[#9f8b77] text-white font-bold py-3 px-8 rounded text-xl transition-colors">
+                再試一次
+            </button>
+        </div>
+        
+        <div id="message-container" class="absolute inset-0 pointer-events-none overflow-hidden rounded-md"></div>
+    </div>
+    
+    <!-- 雲端排行榜區塊 -->
+    <div class="w-full max-w-[500px] mt-6 bg-[#eee4da] rounded-lg p-4 shadow-inner z-10">
+        <div class="flex justify-between items-center border-b-2 border-[#bbada0] pb-2 mb-2">
+            <h2 class="text-xl font-bold text-[#776e65] flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-[#f65e3b]"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                全球雲端排行榜
+            </h2>
+            <span id="cloud-status" class="text-xs font-bold text-gray-500 bg-gray-200 px-2 py-1 rounded">連線中...</span>
+        </div>
+        <ul id="leaderboard-list" class="space-y-1 max-h-[150px] overflow-y-auto custom-scrollbar pr-2">
+            <li class="text-center text-sm text-gray-500 py-4">正在載入雲端資料...</li>
+        </ul>
+    </div>
+
+    <!-- 將所有邏輯包裝在 module 中，以支援 Firebase 的 import -->
+    <script type="module">
+        // 匯入內建雲端資料庫模組 (Firebase)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 雲端相關變數
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let app, auth, db, user;
+        let globalHighScores = [];
+        const cloudStatus = document.getElementById('cloud-status');
+        const leaderboardList = document.getElementById('leaderboard-list');
+
+        // ================= 遊戲核心變數 =================
+        let board = [];
+        let score = 0;
+        let bestScore = 0;
+        let size = 4;
+        let isGameOver = false;
+        let isAutoPlaying = false;
+        let autoPlayTimeout = null;
+        let hasWon2048ThisGame = false;
+
+        const tileContainer = document.getElementById('tile-container');
+        const scoreElement = document.getElementById('score');
+        const bestScoreElement = document.getElementById('best-score');
+        const gameOverScreen = document.getElementById('game-over');
+        const restartBtn = document.getElementById('restart-btn');
+        const tryAgainBtn = document.getElementById('try-again-btn');
+        const autoPlayBtn = document.getElementById('autoplay-btn');
+        const messageContainer = document.getElementById('message-container');
+        const confettiContainer = document.getElementById('confetti-container');
+
+        const tileColors = {
+            2: { bg: '#eee4da', text: '#776e65', size: 'text-3xl sm:text-4xl' },
+            4: { bg: '#ede0c8', text: '#776e65', size: 'text-3xl sm:text-4xl' },
+            8: { bg: '#f2b179', text: '#f9f6f2', size: 'text-3xl sm:text-4xl' },
+            16: { bg: '#f59563', text: '#f9f6f2', size: 'text-3xl sm:text-4xl' },
+            32: { bg: '#f67c5f', text: '#f9f6f2', size: 'text-3xl sm:text-4xl' },
+            64: { bg: '#f65e3b', text: '#f9f6f2', size: 'text-3xl sm:text-4xl' },
+            128: { bg: '#edcf72', text: '#f9f6f2', size: 'text-2xl sm:text-3xl shadow-[0_0_15px_rgba(243,215,116,0.3)]' },
+            256: { bg: '#edcc61', text: '#f9f6f2', size: 'text-2xl sm:text-3xl shadow-[0_0_15px_rgba(243,215,116,0.4)]' },
+            512: { bg: '#edc850', text: '#f9f6f2', size: 'text-2xl sm:text-3xl shadow-[0_0_20px_rgba(243,215,116,0.5)]' },
+            1024: { bg: '#edc53f', text: '#f9f6f2', size: 'text-xl sm:text-2xl shadow-[0_0_20px_rgba(243,215,116,0.6)]' },
+            2048: { bg: '#edc22e', text: '#f9f6f2', size: 'text-xl sm:text-2xl shadow-[0_0_30px_rgba(243,215,116,0.8)]', isLegendary: true },
+            4096: { bg: '#ef6262', text: '#f9f6f2', size: 'text-xl sm:text-2xl shadow-[0_0_30px_rgba(239,98,98,0.8)]', isLegendary: true },
+            8192: { bg: '#eb4d4b', text: '#f9f6f2', size: 'text-xl sm:text-2xl shadow-[0_0_30px_rgba(235,77,75,0.8)]', isLegendary: true },
+            'super': { bg: '#3c3a32', text: '#f9f6f2', size: 'text-xl sm:text-2xl shadow-[0_0_30px_rgba(255,255,255,0.5)]', isLegendary: true }
+        };
+
+        // ================= 雲端資料庫連線初始化 =================
+        if (firebaseConfig) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            const initAuth = async () => {
+                try {
+                    if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
+                    else await signInAnonymously(auth);
+                } catch (e) {
+                    console.error("雲端驗證失敗:", e);
+                    cloudStatus.textContent = '離線模式';
+                    cloudStatus.className = 'text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded';
+                }
+            };
+
+            initAuth();
+
+            // 監聽登入狀態與資料庫變動
+            onAuthStateChanged(auth, (currentUser) => {
+                user = currentUser;
+                if (user) {
+                    cloudStatus.textContent = '已連線雲端';
+                    cloudStatus.className = 'text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded';
+                    
+                    // 監聽排行榜資料
+                    const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                    onSnapshot(scoresRef, (snapshot) => {
+                        let scores = [];
+                        snapshot.forEach(doc => scores.push({ id: doc.id, ...doc.data() }));
+                        
+                        // 在前端進行排序
+                        scores.sort((a, b) => b.score - a.score);
+                        globalHighScores = scores;
+                        renderLeaderboard();
+                        
+                        // 同步雲端的個人最高分
+                        const myCloudScore = globalHighScores.find(s => s.userId === user.uid);
+                        if (myCloudScore && myCloudScore.score > bestScore) {
+                            bestScore = myCloudScore.score;
+                            bestScoreElement.textContent = bestScore;
+                            localStorage.setItem('2048-local-best-score', bestScore);
+                        }
+                    }, (error) => {
+                        console.error("讀取排行榜失敗:", error);
+                    });
+                }
+            });
+        } else {
+            cloudStatus.textContent = '僅本地儲存';
+            leaderboardList.innerHTML = '<li class="text-center text-sm text-gray-500 py-4">目前環境無法連接雲端</li>';
+        }
+
+        // 上傳分數到雲端
+        async function saveScoreToCloud(newScore) {
+            if (!user || !db) return;
+            const scoreRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid);
+            
+            // 檢查雲端現有分數，只有打破自己紀錄才上傳
+            const currentCloudRecord = globalHighScores.find(s => s.userId === user.uid);
+            if (!currentCloudRecord || newScore > currentCloudRecord.score) {
+                try {
+                    await setDoc(scoreRef, {
+                        score: newScore,
+                        timestamp: Date.now(),
+                        userId: user.uid
+                    });
+                } catch(e) {
+                    console.error("上傳分數失敗", e);
+                }
+            }
+        }
+
+        // 渲染排行榜 UI
+        function renderLeaderboard() {
+            leaderboardList.innerHTML = '';
+            
+            // 取前 10 名
+            const topScores = globalHighScores.slice(0, 10);
+            
+            if(topScores.length === 0) {
+                leaderboardList.innerHTML = '<li class="text-center text-sm text-gray-500 py-4">目前還沒有紀錄，來成為第一名吧！</li>';
+                return;
+            }
+
+            topScores.forEach((entry, index) => {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center py-2 border-b border-[#bbada0]/30 last:border-0";
+                
+                // 匿名化玩家名稱 (取 UID 前 4 碼)
+                const isMe = user && entry.userId === user.uid;
+                const playerName = isMe ? "你 (You)" : `玩家 ${entry.userId.substring(0, 4)}`;
+                const nameColor = isMe ? "text-[#f65e3b] font-bold" : "text-[#776e65]";
+                
+                // 前三名給予獎牌圖示
+                let rankDisplay = `#${index + 1}`;
+                if(index === 0) rankDisplay = "🥇";
+                if(index === 1) rankDisplay = "🥈";
+                if(index === 2) rankDisplay = "🥉";
+
+                li.innerHTML = `
+                    <span class="${nameColor} flex items-center gap-2">
+                        <span class="w-6 text-center font-bold">${rankDisplay}</span>
+                        ${playerName}
+                    </span> 
+                    <span class="font-bold text-[#f65e3b] text-lg">${entry.score}</span>
+                `;
+                leaderboardList.appendChild(li);
+            });
+        }
+
+
+        // ================= 特效與遊戲邏輯 =================
+        function triggerConfetti() {
+            const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'];
+            for (let i = 0; i < 100; i++) createConfettiPiece(colors[Math.floor(Math.random() * colors.length)]);
+        }
+
+        function createConfettiPiece(color) {
+            const piece = document.createElement('div');
+            piece.classList.add('confetti-piece');
+            piece.style.backgroundColor = color;
+            piece.style.left = Math.random() * 100 + 'vw';
+            
+            const fallDuration = Math.random() * 3 + 2;
+            const delay = Math.random() * 0.5;
+            
+            if (Math.random() > 0.5) {
+                piece.style.borderRadius = '50%';
+                piece.style.width = '10px'; piece.style.height = '10px';
+            }
+
+            const animation = piece.animate([
+                { transform: `translate3d(0,0,0) rotate(0deg)`, opacity: 1 },
+                { transform: `translate3d(${Math.random()*100 - 50}px, 100vh, 0) rotate(${Math.random()*720}deg)`, opacity: 0 }
+            ], { duration: fallDuration * 1000, delay: delay * 1000, easing: 'cubic-bezier(.37,0,.63,1)', fill: 'forwards' });
+
+            confettiContainer.appendChild(piece);
+            animation.onfinish = () => piece.remove();
+        }
+
+        function showVictoryMessage(value) {
+            const msg = document.createElement('div');
+            msg.className = 'victory-message';
+            msg.textContent = `達成 ${value}！`;
+            messageContainer.appendChild(msg);
+            setTimeout(() => { if (msg.parentNode) msg.remove(); }, 2500);
+        }
+
+        function initGame() {
+            board = Array(size).fill().map(() => Array(size).fill(0));
+            score = 0;
+            isGameOver = false;
+            hasWon2048ThisGame = false;
+            scoreElement.textContent = score;
+            gameOverScreen.classList.add('hidden');
+            gameOverScreen.classList.remove('flex');
+            messageContainer.innerHTML = '';
+            
+            // 改用 localStorage 永久儲存在本地 (級別一達成)
+            if (localStorage.getItem('2048-local-best-score')) {
+                bestScore = parseInt(localStorage.getItem('2048-local-best-score'));
+                bestScoreElement.textContent = bestScore;
+            }
+
+            tileContainer.innerHTML = '';
+            addRandomTile();
+            addRandomTile();
+            renderBoard();
+
+            if (isAutoPlaying) stopAutoPlay();
+        }
+
+        function addRandomTile() {
+            let emptyCells = [];
+            for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (board[r][c] === 0) emptyCells.push({ r, c });
+            if (emptyCells.length > 0) {
+                let randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                board[randomCell.r][randomCell.c] = Math.random() < 0.9 ? 2 : 4;
+                board[randomCell.r][randomCell.c] = { value: board[randomCell.r][randomCell.c], isNew: true };
+            }
+        }
+
+        function getValue(cell) { return typeof cell === 'object' && cell !== null ? cell.value : cell; }
+
+        function renderBoard() {
+            tileContainer.innerHTML = '';
+            let maxTileOnBoard = 0;
+
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    let cell = board[r][c];
+                    let val = getValue(cell);
+                    
+                    if (val > maxTileOnBoard) maxTileOnBoard = val;
+
+                    if (val !== 0) {
+                        let tile = document.createElement('div');
+                        let config = tileColors[val] || tileColors['super'];
+                        
+                        tile.className = `tile ${config.size}`;
+                        tile.style.backgroundColor = config.bg;
+                        tile.style.color = config.text;
+                        
+                        if(config.isLegendary) tile.classList.add('legendary-tile');
+                        else if (config.shadow) tile.style.boxShadow = config.shadow;
+                        
+                        tile.style.setProperty('--x', c);
+                        tile.style.setProperty('--y', r);
+                        tile.textContent = val;
+
+                        if (typeof cell === 'object' && cell.isNew) tile.classList.add('tile-new');
+                        else if (typeof cell === 'object' && cell.isMerged) tile.classList.add('tile-merged');
+
+                        tileContainer.appendChild(tile);
+                        board[r][c] = val; 
+                    }
+                }
+            }
+
+            if (maxTileOnBoard >= 2048 && !hasWon2048ThisGame) {
+                hasWon2048ThisGame = true;
+                triggerConfetti();
+                showVictoryMessage(maxTileOnBoard);
+            }
+        }
+
+        function slideAndMerge(line) {
+            let nums = line.map(getValue).filter(val => val !== 0);
+            let merged = [], scoreIncrease = 0;
+            for (let i = 0; i < nums.length; i++) {
+                if (i < nums.length - 1 && nums[i] === nums[i + 1]) {
+                    let newVal = nums[i] * 2;
+                    merged.push({ value: newVal, isMerged: true });
+                    scoreIncrease += newVal;
+                    i++;
+                } else merged.push(nums[i]);
+            }
+            while (merged.length < size) merged.push(0);
+            return { newLine: merged, scoreIncrease };
+        }
+
+        function processMoveDirection(dir) {
+            let changed = false, totalScoreIncrease = 0;
+            for (let i = 0; i < size; i++) {
+                let line = [];
+                for (let j = 0; j < size; j++) {
+                    if (dir === 'left') line.push(board[i][j]);
+                    else if (dir === 'right') line.push(board[i][size - 1 - j]);
+                    else if (dir === 'up') line.push(board[j][i]);
+                    else if (dir === 'down') line.push(board[size - 1 - j][i]);
+                }
+                let { newLine, scoreIncrease } = slideAndMerge(line);
+                for (let j = 0; j < size; j++) {
+                    let r = dir === 'left' || dir === 'right' ? i : (dir === 'up' ? j : size - 1 - j);
+                    let c = dir === 'left' || dir === 'right' ? (dir === 'left' ? j : size - 1 - j) : i;
+                    if (getValue(board[r][c]) !== getValue(newLine[j])) changed = true;
+                    board[r][c] = newLine[j];
+                }
+                totalScoreIncrease += scoreIncrease;
+            }
+            return { changed, totalScoreIncrease };
+        }
+
+        function processMove(moveResult) {
+            if (moveResult.changed) {
+                score += moveResult.totalScoreIncrease;
+                scoreElement.textContent = score;
+                
+                // 本地與雲端雙重儲存機制
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestScoreElement.textContent = bestScore;
+                    localStorage.setItem('2048-local-best-score', bestScore); // 級別一：本地永久儲存
+                    saveScoreToCloud(bestScore); // 級別二：寫入雲端
+                }
+                addRandomTile();
+                renderBoard();
+                checkGameOver();
+            }
+        }
+
+        function checkGameOver() {
+            for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (getValue(board[r][c]) === 0) return;
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    let current = getValue(board[r][c]);
+                    if (c < size - 1 && current === getValue(board[r][c + 1])) return;
+                    if (r < size - 1 && current === getValue(board[r + 1][c])) return;
+                }
+            }
+            isGameOver = true;
+            gameOverScreen.classList.remove('hidden');
+            gameOverScreen.classList.add('flex');
+            
+            // 遊戲結束時強制同步一次最終分數
+            saveScoreToCloud(score);
+
+            if (isAutoPlaying) stopAutoPlay();
+        }
+
+        // ================= Expectimax AI 邏輯 =================
+        function fastSimulateShift(numBoard, dir) {
+            let newB = [[0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0]], changed = false;
+            for (let i = 0; i < 4; i++) {
+                let res = [0, 0, 0, 0], writeIdx = 0, lastVal = 0;
+                for (let j = 0; j < 4; j++) {
+                    let r = dir === 'left' || dir === 'right' ? i : (dir === 'up' ? j : 3 - j);
+                    let c = dir === 'left' || dir === 'right' ? (dir === 'left' ? j : 3 - j) : i;
+                    let v = numBoard[r][c];
+                    if (v !== 0) {
+                        if (lastVal === 0) lastVal = v;
+                        else if (lastVal === v) { res[writeIdx++] = v * 2; lastVal = 0; }
+                        else { res[writeIdx++] = lastVal; lastVal = v; }
+                    }
+                }
+                if (lastVal !== 0) res[writeIdx] = lastVal;
+                for (let j = 0; j < 4; j++) {
+                    let r = dir === 'left' || dir === 'right' ? i : (dir === 'up' ? j : 3 - j);
+                    let c = dir === 'left' || dir === 'right' ? (dir === 'left' ? j : 3 - j) : i;
+                    let v = res[j];
+                    newB[r][c] = v;
+                    if (numBoard[r][c] !== v) changed = true;
+                }
+            }
+            return { changed, newB };
+        }
+
+        const weightMatrix = [
+            [65536, 32768, 16384, 8192],
+            [512,   1024,  2048,  4096],
+            [256,   128,   64,    32],
+            [2,     4,     8,     16]
+        ];
+
+        function evaluateBoard(numBoard) {
+            let score = 0, emptyCount = 0;
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 4; c++) {
+                    let val = numBoard[r][c];
+                    if (val === 0) emptyCount++;
+                    else score += val * weightMatrix[r][c];
+                }
+            }
+            return score + emptyCount * 100000;
+        }
+
+        function expectimax(numBoard, depth, isPlayerTurn) {
+            if (depth === 0) return evaluateBoard(numBoard);
+            if (isPlayerTurn) {
+                let maxScore = -Infinity, dirs = ['up', 'left', 'right', 'down'], hasMoved = false;
+                for (let dir of dirs) {
+                    let { changed, newB } = fastSimulateShift(numBoard, dir);
+                    if (changed) {
+                        hasMoved = true;
+                        let score = expectimax(newB, depth - 1, false);
+                        if (score > maxScore) maxScore = score;
+                    }
+                }
+                return hasMoved ? maxScore : -10000;
+            } else {
+                let emptyCells = [];
+                for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (numBoard[r][c] === 0) emptyCells.push({r, c});
+                if (emptyCells.length === 0) return evaluateBoard(numBoard);
+                let expectedScore = 0, probPerCell = 1.0 / emptyCells.length;
+                for (let cell of emptyCells) {
+                    numBoard[cell.r][cell.c] = 2; expectedScore += 0.9 * probPerCell * expectimax(numBoard, depth, true);
+                    numBoard[cell.r][cell.c] = 4; expectedScore += 0.1 * probPerCell * expectimax(numBoard, depth, true);
+                    numBoard[cell.r][cell.c] = 0; 
+                }
+                return expectedScore;
+            }
+        }
+
+        function findBestMoveExpectimax() {
+            let currentNumBoard = board.map(row => row.map(cell => getValue(cell)));
+            let emptyCount = 0;
+            for (let r=0; r<4; r++) for(let c=0; c<4; c++) if(currentNumBoard[r][c]===0) emptyCount++;
+            
+            let depth;
+            if (emptyCount > 6) depth = 2; else if (emptyCount >= 3) depth = 3; else depth = 4;
+
+            let bestScore = -Infinity, bestDir = null, dirs = ['up', 'left', 'right', 'down'];
+            for (let dir of dirs) {
+                let { changed, newB } = fastSimulateShift(currentNumBoard, dir);
+                if (changed) {
+                    let score = expectimax(newB, depth, false);
+                    if (score > bestScore) { bestScore = score; bestDir = dir; }
+                }
+            }
+            return bestDir;
+        }
+
+        function doAutoPlayStep() {
+            if (!isAutoPlaying || isGameOver) { stopAutoPlay(); return; }
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    if (!isAutoPlaying) return;
+                    let bestDir = findBestMoveExpectimax();
+                    if (bestDir) {
+                        processMove(processMoveDirection(bestDir));
+                        autoPlayTimeout = setTimeout(doAutoPlayStep, 80); 
+                    } else stopAutoPlay();
+                }, 10);
+            });
+        }
+
+        function toggleAutoPlay() { if (isAutoPlaying) stopAutoPlay(); else startAutoPlay(); }
+
+        function startAutoPlay() {
+            if (isGameOver) return;
+            isAutoPlaying = true;
+            autoPlayBtn.textContent = '停止 AI';
+            autoPlayBtn.classList.replace('bg-[#8f7a66]', 'bg-[#f65e3b]');
+            autoPlayBtn.classList.replace('hover:bg-[#9f8b77]', 'hover:bg-[#df5536]');
+            doAutoPlayStep();
+        }
+
+        function stopAutoPlay() {
+            isAutoPlaying = false;
+            autoPlayBtn.textContent = 'AI 自動';
+            autoPlayBtn.classList.replace('bg-[#f65e3b]', 'bg-[#8f7a66]');
+            autoPlayBtn.classList.replace('hover:bg-[#df5536]', 'hover:bg-[#9f8b77]');
+            clearTimeout(autoPlayTimeout);
+        }
+
+        // ================= 事件綁定 =================
+        autoPlayBtn.addEventListener('click', toggleAutoPlay);
+        restartBtn.addEventListener('click', initGame);
+        tryAgainBtn.addEventListener('click', initGame);
+
+        document.addEventListener('keydown', (e) => {
+            if (isAutoPlaying || isGameOver) return;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+            switch (e.key) {
+                case 'ArrowUp': processMove(processMoveDirection('up')); break;
+                case 'ArrowDown': processMove(processMoveDirection('down')); break;
+                case 'ArrowLeft': processMove(processMoveDirection('left')); break;
+                case 'ArrowRight': processMove(processMoveDirection('right')); break;
+            }
+        });
+
+        let touchStartX = 0, touchStartY = 0;
+        const gameContainer = document.querySelector('.game-container');
+        gameContainer.addEventListener('touchstart', (e) => {
+            if (isAutoPlaying || isGameOver) return;
+            touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        
+        gameContainer.addEventListener('touchend', (e) => {
+            if (isAutoPlaying || isGameOver || !touchStartX) return;
+            let dx = e.changedTouches[0].clientX - touchStartX;
+            let dy = e.changedTouches[0].clientY - touchStartY;
+            if (Math.max(Math.abs(dx), Math.abs(dy)) > 30) {
+                if (Math.abs(dx) > Math.abs(dy)) dx > 0 ? processMove(processMoveDirection('right')) : processMove(processMoveDirection('left'));
+                else dy > 0 ? processMove(processMoveDirection('down')) : processMove(processMoveDirection('up'));
+            }
+            touchStartX = 0;
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
