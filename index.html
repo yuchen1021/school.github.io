@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的網頁導覽</title>
+    <!-- 引入 Tailwind CSS 以進行快速且現代的樣式設計 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* 設置一個柔和的漸變背景 */
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-6">
+
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center transform transition-all hover:scale-105 duration-300">
+        
+        <!-- 頁面標題 -->
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">歡迎來到我的主頁</h1>
+        <p class="text-gray-500 mb-8">請選擇您想前往的頁面</p>
+
+        <!-- 按鈕容器，使用 flexbox 讓按鈕垂直排列並有間距 -->
+        <div class="flex flex-col space-y-4">
+            
+            <!-- 第一個按鈕：連結到 2048.html -->
+            <a href="2048.html" class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white transition-all duration-200 bg-indigo-600 border border-transparent rounded-xl hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 shadow-md hover:shadow-lg">
+                <span class="mr-2">🎮</span> 遊玩 2048
+                <!-- 添加一個小動畫圖標 -->
+                <svg class="w-5 h-5 ml-2 -mr-1 transition-transform duration-200 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </a>
+
+            <!-- 第二個按鈕：連結到 ps.html -->
+            <a href="ps.html" class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white transition-all duration-200 bg-emerald-500 border border-transparent rounded-xl hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 shadow-md hover:shadow-lg">
+                <span class="mr-2">📸</span> 前往 Photoshop 網頁版
+                <svg class="w-5 h-5 ml-2 -mr-1 transition-transform duration-200 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </a>
+
+            <!-- 第三個按鈕：連結到 Ubike.html -->
+            <a href="Ubike.html" class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white transition-all duration-200 bg-amber-500 border border-transparent rounded-xl hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 shadow-md hover:shadow-lg">
+                <span class="mr-2">🚲</span> 查詢 YouBike 站點
+                <svg class="w-5 h-5 ml-2 -mr-1 transition-transform duration-200 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </a>
+            
+        </div>
+        
+        <!-- 頁尾小字 -->
+        <div class="mt-8 text-sm text-gray-400">
+            點擊上方按鈕即可跳轉至對應頁面
+        </div>
+    </div>
+
+</body>
+</html>
